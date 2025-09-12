@@ -1,0 +1,30 @@
+{
+  "name": "iobroker.marstek",
+  "version": "0.1.0",
+  "description": "ioBroker adapter for Marstek Venus battery via Modbus TCP",
+  "author": {
+    "name": "Your Name",
+    "email": ""
+  },
+  "contributors": [],
+  "keywords": [
+    "iobroker",
+    "adapter",
+    "modbus",
+    "marstek",
+    "battery"
+  ],
+  "license": "MIT",
+  "main": "main.js",
+  "scripts": {
+    "start": "node main.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@iobroker/adapter-core": "^3.1.6",
+    "modbus-serial": "^8.0.21"
+  }
+}
+

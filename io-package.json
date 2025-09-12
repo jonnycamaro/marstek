@@ -1,0 +1,68 @@
+{
+  "common": {
+    "name": "marstek",
+    "version": "0.1.2",
+    "title": "Marstek Venus (Modbus TCP)",
+    "news": {},
+    "license": "MIT",
+    "platform": "Javascript/Node.js",
+    "mode": "daemon",
+    "icon": "",
+    "enabled": false,
+    "extIcon": "",
+    "keywords": ["marstek", "venus", "battery", "modbus", "energy"],
+    "readme": "https://github.com/your/repo",
+    "type": "energy",
+    "connectionType": "local",
+    "dataSource": "poll",
+    "authors": [
+      {
+        "name": "Your Name",
+        "email": ""
+      }
+    ],
+    "compact": true,
+    "materialize": false,
+    "jsonConfig": true,
+    "restartAdapters": [],
+    "dependencies": [
+      {
+        "js-controller": ">=5.0.0"
+      }
+    ],
+    "tier": 3
+  },
+  "native": {
+    "host": "192.168.1.100",
+    "port": 502,
+    "unitId": 1,
+    "pollIntervalMs": 5000,
+    "connectTimeoutMs": 3000,
+    "reconnectIntervalMs": 10000
+  },
+  "objects": [],
+  "instanceObjects": [
+    {
+      "_id": "info",
+      "type": "channel",
+      "common": {
+        "name": "Information"
+      },
+      "native": {}
+    },
+    {
+      "_id": "info.connection",
+      "type": "state",
+      "common": {
+        "role": "indicator.connected",
+        "name": "Device connection",
+        "type": "boolean",
+        "read": true,
+        "write": false,
+        "def": false
+      },
+      "native": {}
+    }
+  ]
+}
+

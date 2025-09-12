@@ -1,0 +1,53 @@
+{
+  "type": "panel",
+  "items": {
+    "header": {
+      "type": "staticText",
+      "text": "Configure connection to your Modbus TCP RS485 gateway"
+    },
+    "host": {
+      "type": "text",
+      "label": "Gateway IP address",
+      "newLine": true,
+      "sm": 6,
+      "md": 4,
+      "xs": 12
+    },
+    "port": {
+      "type": "number",
+      "label": "Gateway TCP port",
+      "sm": 6,
+      "md": 4,
+      "xs": 12
+    },
+    "unitId": {
+      "type": "number",
+      "label": "Modbus Unit ID",
+      "sm": 6,
+      "md": 4,
+      "xs": 12
+    },
+    "pollIntervalMs": {
+      "type": "number",
+      "label": "Polling interval (ms)",
+      "sm": 6,
+      "md": 4,
+      "xs": 12
+    },
+    "connectTimeoutMs": {
+      "type": "number",
+      "label": "Connect/Request timeout (ms)",
+      "sm": 6,
+      "md": 4,
+      "xs": 12
+    },
+    "reconnectIntervalMs": {
+      "type": "number",
+      "label": "Reconnect interval (ms)",
+      "sm": 6,
+      "md": 4,
+      "xs": 12
+    }
+  }
+}
+
