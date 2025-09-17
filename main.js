@@ -15,6 +15,12 @@ class MarstekVenusAdapter extends utils.Adapter {
     this.pollTimer = null;
     this.connected = false;
     this.isReading = false;
+    this.lastSuccessfulRead = 0;
+    this.consecutiveReadErrors = 0;
+    this.reconnectTimer = null;
+    this.watchdogTimer = null;
+    this.reconnectAttempts = 0;
+    this.stallCount = 0;
 
     this.on("ready", this.onReady.bind(this));
     this.on("stateChange", this.onStateChange.bind(this));
@@ -28,9 +34,58 @@ class MarstekVenusAdapter extends utils.Adapter {
     await this.connect();
     await this.subscribeStatesAsync("data.*").catch((e) => this.log.warn(`Subscribe failed: ${e.message}`));
     this.startPolling();
+    this.startWatchdog();
   }
 
   async ensureObjects() {
+    await this.setObjectNotExistsAsync("info.lastSuccessfulRead", {
+      type: "state",
+      common: {
+        role: "value.time",
+        name: "Timestamp of last successful read",
+        type: "number",
+        read: true,
+        write: false,
+        def: 0,
+      },
+      native: {},
+    });
+    await this.setObjectNotExistsAsync("info.consecutiveReadErrors", {
+      type: "state",
+      common: {
+        role: "value",
+        name: "Consecutive read errors",
+        type: "number",
+        read: true,
+        write: false,
+        def: 0,
+      },
+      native: {},
+    });
+    await this.setObjectNotExistsAsync("info.reconnectAttempts", {
+      type: "state",
+      common: {
+        role: "value",
+        name: "Reconnect attempts",
+        type: "number",
+        read: true,
+        write: false,
+        def: 0,
+      },
+      native: {},
+    });
+    await this.setObjectNotExistsAsync("info.stalled", {
+      type: "state",
+      common: {
+        role: "indicator.problem",
+        name: "Polling stalled",
+        type: "boolean",
+        read: true,
+        write: false,
+        def: false,
+      },
+      native: {},
+    });
     for (const reg of registers) {
       const id = `data.${reg.id}`;
       await this.setObjectNotExistsAsync(id, {
@@ -61,6 +116,7 @@ class MarstekVenusAdapter extends utils.Adapter {
     const port = Number(this.config.port);
     const unitId = Number(this.config.unitId || 1);
     const connectTimeoutMs = Number(this.config.connectTimeoutMs || 3000);
+    const operationTimeoutMs = Number(this.config.operationTimeoutMs || this.config.connectTimeoutMs || 3000);
 
     if (!host || !port) {
       this.log.error("Missing host or port in adapter configuration");
@@ -80,15 +136,22 @@ class MarstekVenusAdapter extends utils.Adapter {
         });
       });
       this.client.setID(unitId);
-      this.client.setTimeout(connectTimeoutMs);
+      this.client.setTimeout(operationTimeoutMs);
       this.connected = true;
       this.setState("info.connection", true, true);
       this.log.info(`Connected to Modbus ${host}:${port} (unit ${unitId})`);
+      if (this.reconnectTimer) {
+        clearTimeout(this.reconnectTimer);
+        this.reconnectTimer = null;
+      }
+      this.reconnectAttempts = 0;
+      await this.setStateAsync("info.reconnectAttempts", { val: this.reconnectAttempts, ack: true });
     } catch (e) {
       this.connected = false;
       this.setState("info.connection", false, true);
       this.log.warn(`Could not connect to Modbus ${host}:${port}: ${e.message}`);
       await this.disconnect();
+      this.scheduleReconnect();
     }
   }
 
@@ -104,6 +167,7 @@ class MarstekVenusAdapter extends utils.Adapter {
     } finally {
       this.connected = false;
       this.setState("info.connection", false, true);
+      this.client = null;
     }
   }
 
@@ -113,6 +177,52 @@ class MarstekVenusAdapter extends utils.Adapter {
     this.pollTimer = setInterval(() => this.pollOnce().catch((e) => this.log.debug(String(e))), pollIntervalMs);
     // initial
     this.pollOnce().catch((e) => this.log.debug(String(e)));
+  }
+
+  startWatchdog() {
+    const pollIntervalMs = Number(this.config.pollIntervalMs || 5000);
+    const staleTimeoutMs = Number(this.config.staleTimeoutMs || pollIntervalMs * 3);
+    if (this.watchdogTimer) clearInterval(this.watchdogTimer);
+    this.watchdogTimer = setInterval(async () => {
+      const now = Date.now();
+      const age = now - this.lastSuccessfulRead;
+      const isStalled = this.lastSuccessfulRead > 0 && age > staleTimeoutMs;
+      await this.setStateAsync("info.stalled", { val: !!isStalled, ack: true });
+      if (isStalled) {
+        this.stallCount += 1;
+        this.log.warn(`Polling stalled for ${Math.round(age)} ms (> ${staleTimeoutMs}). Forcing reconnect (stall #${this.stallCount}).`);
+        await this.forceReconnect();
+        const restartOnStall = !!this.config.restartOnStall;
+        if (restartOnStall && this.stallCount >= 2) {
+          this.log.error("Multiple stalls detected. Terminating adapter to trigger controller restart.");
+          if (typeof this.terminate === "function") {
+            this.terminate("stalled", 11);
+          } else {
+            process.exit(11);
+          }
+        }
+      }
+    }, Math.max(1000, pollIntervalMs));
+  }
+
+  scheduleReconnect() {
+    const reconnectIntervalMs = Number(this.config.reconnectIntervalMs || 10000);
+    if (this.reconnectTimer) return;
+    this.reconnectTimer = setTimeout(async () => {
+      this.reconnectTimer = null;
+      this.reconnectAttempts += 1;
+      await this.setStateAsync("info.reconnectAttempts", { val: this.reconnectAttempts, ack: true });
+      this.log.info(`Attempting reconnect #${this.reconnectAttempts}...`);
+      await this.connect();
+    }, reconnectIntervalMs);
+  }
+
+  async forceReconnect() {
+    try {
+      await this.disconnect();
+    } finally {
+      await this.connect();
+    }
   }
 
   async pollOnce() {
@@ -132,6 +242,7 @@ class MarstekVenusAdapter extends utils.Adapter {
       }
 
       // For simplicity, read each register/span individually first; optimize later
+      let successfulReadsInCycle = 0;
       for (const reg of registers) {
         try {
           let value;
@@ -145,9 +256,30 @@ class MarstekVenusAdapter extends utils.Adapter {
 
           if (value !== undefined) {
             await this.setStateAsync(`data.${reg.id}`, { val: value, ack: true });
+            if (this.config.debugProtocol) {
+              this.log.debug(`Read ${reg.name} (${reg.id}) @${reg.address}/${reg.length} fc${reg.fc}: ${String(value)}`);
+            }
+            successfulReadsInCycle += 1;
           }
         } catch (e) {
           this.log.debug(`Read error ${reg.name} @${reg.address}: ${e.message}`);
+        }
+      }
+      if (successfulReadsInCycle > 0) {
+        this.lastSuccessfulRead = Date.now();
+        this.consecutiveReadErrors = 0;
+        await this.setStateAsync("info.lastSuccessfulRead", { val: this.lastSuccessfulRead, ack: true });
+        await this.setStateAsync("info.consecutiveReadErrors", { val: this.consecutiveReadErrors, ack: true });
+        this.stallCount = 0;
+      } else {
+        const maxConsecutiveReadErrors = Number(this.config.maxConsecutiveReadErrors || 3);
+        this.consecutiveReadErrors += 1;
+        await this.setStateAsync("info.consecutiveReadErrors", { val: this.consecutiveReadErrors, ack: true });
+        this.log.warn(`No register could be read this cycle (errors=${this.consecutiveReadErrors}/${maxConsecutiveReadErrors}).`);
+        if (this.consecutiveReadErrors >= maxConsecutiveReadErrors) {
+          this.log.warn("Too many consecutive read errors. Forcing reconnect now.");
+          this.consecutiveReadErrors = 0;
+          await this.forceReconnect();
         }
       }
     } finally {
@@ -264,6 +396,8 @@ class MarstekVenusAdapter extends utils.Adapter {
   onUnload(callback) {
     try {
       if (this.pollTimer) clearInterval(this.pollTimer);
+      if (this.watchdogTimer) clearInterval(this.watchdogTimer);
+      if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
       this.disconnect().finally(() => callback());
     } catch (e) {
       callback();

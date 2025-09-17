@@ -1,7 +1,7 @@
 {
   "common": {
     "name": "marstek",
-    "version": "0.1.2",
+    "version": "0.1.3",
     "title": "Marstek Venus (Modbus TCP)",
     "news": {},
     "license": "MIT",
@@ -38,7 +38,12 @@
     "unitId": 1,
     "pollIntervalMs": 5000,
     "connectTimeoutMs": 3000,
-    "reconnectIntervalMs": 10000
+    "operationTimeoutMs": 3000,
+    "reconnectIntervalMs": 10000,
+    "staleTimeoutMs": 15000,
+    "maxConsecutiveReadErrors": 3,
+    "restartOnStall": false,
+    "debugProtocol": false
   },
   "objects": [],
   "instanceObjects": [

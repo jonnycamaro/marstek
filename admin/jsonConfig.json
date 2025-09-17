@@ -41,9 +41,44 @@
       "md": 4,
       "xs": 12
     },
+    "operationTimeoutMs": {
+      "type": "number",
+      "label": "Operation timeout (ms)",
+      "sm": 6,
+      "md": 4,
+      "xs": 12
+    },
     "reconnectIntervalMs": {
       "type": "number",
       "label": "Reconnect interval (ms)",
+      "sm": 6,
+      "md": 4,
+      "xs": 12
+    },
+    "staleTimeoutMs": {
+      "type": "number",
+      "label": "Watchdog stale timeout (ms)",
+      "sm": 6,
+      "md": 4,
+      "xs": 12
+    },
+    "maxConsecutiveReadErrors": {
+      "type": "number",
+      "label": "Max consecutive read errors before reconnect",
+      "sm": 6,
+      "md": 4,
+      "xs": 12
+    },
+    "restartOnStall": {
+      "type": "checkbox",
+      "label": "Let controller restart on repeated stalls",
+      "sm": 6,
+      "md": 4,
+      "xs": 12
+    },
+    "debugProtocol": {
+      "type": "checkbox",
+      "label": "Verbose protocol logging (read/write values)",
       "sm": 6,
       "md": 4,
       "xs": 12
